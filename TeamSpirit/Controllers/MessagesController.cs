@@ -28,7 +28,7 @@ namespace TeamSpirit
         {
             StateClient stateClient = activity.GetStateClient();
             userData = await stateClient.BotState.GetUserDataAsync(activity.ChannelId, activity.From.Id);
-            //botData = await stateClient.BotState.GetConversationDataAsync(activity.ChannelId, activity.Conversation.Id);
+            botData = await stateClient.BotState.GetConversationDataAsync(activity.ChannelId, activity.Conversation.Id);
             userMessage = activity.Text;
             
             if (activity.Type == ActivityTypes.Message)
@@ -43,15 +43,19 @@ namespace TeamSpirit
                     {
                         userData.SetProperty<bool>("isSelectCustomerOption", true);
                         await stateClient.BotState.SetUserDataAsync(activity.ChannelId, activity.From.Id, userData);
+                        await QuestionRegister("1. Are you wanting to join Genesis Energy?", connector, stateClient, activity);
+                        await QuestionRegister("2. Are you an existing customer?", connector, stateClient, activity);
+                        await QuestionRegister("3. Are you making an enquiry?", connector, stateClient, activity);
                         //await stateClient.BotState.SetPrivateConversationDataAsync(activity.ChannelId, activity.Conversation.Id, activity.From.Id, botData);
 
-                        await connector.Conversations.SendToConversationAsync(CustomerOptions(activity));
+                        //await connector.Conversations.SendToConversationAsync(CustomerOptions(activity));
+
                         return Request.CreateResponse(HttpStatusCode.OK);
                     }
 
                     if (userData.GetProperty<bool>("isSelectCustomerOption"))
                     {
-                        if (userMessage.ToLower().Equals("new customer") || userMessage.ToLower().Equals("1"))
+                        if (userMessage.ToLower().Contains("join") || userMessage.ToLower().Equals("1"))
                         {
                             // Adding new customer
                             userData.SetProperty<bool>("isRegister", true);
@@ -153,7 +157,7 @@ namespace TeamSpirit
                         if (userData.GetProperty<bool>("isEmail"))
                         {
                             userData.SetProperty<string>("Mobile", userMessage);
-                            await QuestionRegister("Enter your Password:", connector, stateClient, activity);
+                            await QuestionRegister("Enter your contact Email:", connector, stateClient, activity);
                             userData.SetProperty<bool>("isEmail", false);
                             userData.SetProperty<bool>("isPassword", true);
                             await stateClient.BotState.SetUserDataAsync(activity.ChannelId, activity.From.Id, userData);
@@ -162,8 +166,8 @@ namespace TeamSpirit
                         }
                         if (userData.GetProperty<bool>("isPassword"))
                         {
-                            userData.SetProperty<string>("Password", userMessage);
-                            await QuestionRegister("Enter your contact Email:", connector, stateClient, activity);
+                            userData.SetProperty<string>("Email", userMessage);
+                            await QuestionRegister("Enter your Password:", connector, stateClient, activity);
                             userData.SetProperty<bool>("isPassword", false);
                             userData.SetProperty<bool>("isAddress", true);
                             await stateClient.BotState.SetUserDataAsync(activity.ChannelId, activity.From.Id, userData);
@@ -173,7 +177,7 @@ namespace TeamSpirit
 
                         if (userData.GetProperty<bool>("isAddress"))
                         {
-                            userData.SetProperty<string>("Email", userMessage);
+                            userData.SetProperty<string>("Password", userMessage);
                             await QuestionRegister("Enter your House Address:", connector, stateClient, activity);
                             userData.SetProperty<bool>("isAddress", false);
                             userData.SetProperty<bool>("isEnd", true);
@@ -187,15 +191,18 @@ namespace TeamSpirit
                             userData.SetProperty<string>("Address", userMessage);
                             Customer customer = new Customer
                             {
-                                firstName = userData.GetProperty<string>("FirstName"),
-                                middleName = userData.GetProperty<string>("MiddleName"),
-                                lastName = userData.GetProperty<string>("LastName"),
-                                dob = userData.GetProperty<string>("DoB"),
-                                mobilePhone = userData.GetProperty<string>("Mobile"),
-                                email = userData.GetProperty<string>("Email"),
-                                postalAddress = userData.GetProperty<string>("Address"),
-                                password = userData.GetProperty<string>("Password"),
+                                firstName = botData.GetProperty<string>("FirstName"),
+                                middleName = botData.GetProperty<string>("MiddleName"),
+                                lastName = botData.GetProperty<string>("LastName"),
+                                dob = botData.GetProperty<string>("DoB"),
+                                mobilePhone = botData.GetProperty<string>("Mobile"),
+                                email = botData.GetProperty<string>("Email"),
+                                postalAddress = botData.GetProperty<string>("Address"),
+                                password = botData.GetProperty<string>("Password"),
                             };
+                            userData.SetProperty<Customer>("CustomerDetail", customer);
+                            await stateClient.BotState.SetUserDataAsync(activity.ChannelId, activity.From.Id, userData);
+
                             HttpClient httpClient = new HttpClient();
                             // Customer Details
                             var uri = "http://52.237.219.181:8081/v1/expr/faceboobbot/customerddetails";
@@ -235,7 +242,7 @@ namespace TeamSpirit
                             userData.SetProperty<bool>("isSelectCustomerOption", true);
                             await stateClient.BotState.SetUserDataAsync(activity.ChannelId, activity.From.Id, userData);
                             //await stateClient.BotState.SetPrivateConversationDataAsync(activity.ChannelId, activity.Conversation.Id, activity.From.Id, botData);
-                            await connector.Conversations.SendToConversationAsync(CustomerOptions(activity));
+                            //await connector.Conversations.SendToConversationAsync(CustomerDetailConfirm(activity, userData.GetProperty<Customer>("CustomerDetail")));
                             return Request.CreateResponse(HttpStatusCode.OK);
 
                         }
@@ -254,9 +261,72 @@ namespace TeamSpirit
             return response;
         }
 
-        private async Task PostCustomerDetail(Customer customer)
+        private Activity CustomerDetailConfirm(Activity activity, Customer customer)
         {
+            Activity replyToConversation = activity.CreateReply("");
+            replyToConversation.Recipient = activity.From;
+            replyToConversation.Type = "message";
+            replyToConversation.Attachments = new List<Attachment>();
+            List<ReceiptItem> items = new List<ReceiptItem>();
 
+            ReceiptItem firstname = new ReceiptItem()
+            {
+                Text = "Firstname: " + customer.firstName
+            };
+            items.Add(firstname);
+
+            ReceiptItem middlename = new ReceiptItem()
+            {
+                Text = "MiddleName: " + customer.middleName
+            };
+            items.Add(middlename);
+
+            ReceiptItem lastname = new ReceiptItem()
+            {
+                Text = "Lastname: " + customer.lastName
+            };
+            items.Add(lastname);
+
+            ReceiptItem dob = new ReceiptItem()
+            {
+                Text = "DoB: " + customer.dob
+            };
+            items.Add(dob);
+
+            ReceiptItem mobile = new ReceiptItem()
+            {
+                Text = "Mobile: " + customer.mobilePhone
+            };
+            items.Add(mobile);
+
+            ReceiptItem email = new ReceiptItem()
+            {
+                Text = "Email: " + customer.email
+            };
+            items.Add(email);
+
+            ReceiptItem address = new ReceiptItem()
+            {
+                Text = "Address: " + customer.postalAddress
+            };
+            items.Add(address);
+            //string text = "Firstname: " + customer.firstName + "\n\n" +
+            //    "MiddleName: " + customer.middleName + "\n\n" +
+            //    "Lastname: " + customer.lastName + "\n\n" +
+            //    "DoB: " + customer.dob + "\n\n" +
+            //    "Mobile: " + customer.mobilePhone + "\n\n" +
+            //    "Email: " + customer.email + "\n\n" +
+            //    "Address: " + customer.postalAddress;
+
+            ReceiptCard Card = new ReceiptCard()
+            {
+                Title = "Please confirm your information",
+                Items = items
+            };
+
+            Attachment plAttachment = Card.ToAttachment();
+            replyToConversation.Attachments.Add(plAttachment);
+            return replyToConversation;
         } 
 
         private async Task QuestionRegister(string question, ConnectorClient connector, StateClient stateClient, Activity activity)
